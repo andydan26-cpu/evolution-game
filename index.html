@@ -345,7 +345,7 @@ const TR={
   intel:{n:'智能',g:'智',f:1,hot:1,x:1,k:'self',grp:'攻擊',sd:'攻擊時無視獵物一個性狀',d:'需額外 1 食物。這隻肉食攻擊時可以無視獵物一個性狀：突破偽裝、水生、穴居、飛行、共生保護其中一項，或讓奔跑、墨汁、殼、擬態、斷尾、有毒其中一項失效（自動挑最有用的）。體型限制不能無視。'},
   ambush:{n:'伏擊',g:'伏',x:1,k:'self',grp:'攻擊',sd:'別人從食物池吃時搶先攻擊',d:'要和肉食一起用。其他玩家的動物從食物池拿食物時，如果這隻肉食攻擊得到牠，會自動搶先攻擊；成功的話那隻動物吃不到。每個進食階段每隻一次。'},
   trem:{n:'吸蟲',g:'吸',f:1,hot:1,x:1,k:'enemyPair',grp:'攻擊',sd:'放別人兩隻動物上，各 +1 食量',d:'放在同一位其他玩家的兩隻動物上，兩隻都多需要 1 個食物。其中一隻死掉時，另一隻身上的吸蟲也一起移除。'},
-  flight:{n:'飛行',g:'飛',f:1,x:1,k:'self',grp:'防禦',sd:'食量 +1；性狀不比牠少的肉食打不到',d:'需額外 1 食物。攻擊者的性狀數量必須比牠少，才能攻擊牠。'},
+  flight:{n:'飛行',g:'飛',f:1,x:1,k:'self',grp:'防禦',sd:'食量 +1；只有會飛的肉食吃得到',d:'需額外 1 食物。只有同樣具「飛行」的肉食才能攻擊牠；會飛的肉食也能吃不會飛的動物。'},
   shell:{n:'殼',g:'殼',x:1,k:'self',grp:'防禦',sd:'被攻擊縮殼，本階段不能吃食物池',d:'被攻擊時縮進殼裡，攻擊失敗，同一隻肉食這個進食階段不能再攻擊牠；但這個進食階段剩下的時間，牠也不能再從食物池拿食物。'},
   ink:{n:'墨汁',g:'墨',x:1,k:'self',grp:'防禦',sd:'每輪一次，被攻擊噴墨逃走',d:'每個進食階段一次，被攻擊時噴墨逃走，攻擊失敗。'},
   angler:{n:'鮟鱇魚',g:'鮟',x:1,k:'animal',grp:'防禦',sd:'只能當動物打，保護沒性狀的同伴',d:'只能當成新動物打出。牠身上沒有其他性狀時，如果其他玩家的肉食攻擊你一隻「沒有性狀」的動物，鮟鱇魚會反咬並吃掉那隻肉食，攻擊失敗。每個進食階段一次。'},
@@ -398,7 +398,7 @@ function pairOk(p,t,a,b){return a&&b&&a!==b&&!p.pairs.concat(p.pendPairs).some(x
 function blockers(at,prey,op){const AT=Array.isArray(at)?at:at.traits;const A=t=>AT.includes(t),B=t=>prey.traits.includes(t);
   if(sizeOf(prey)>=powerOf(at))return null;if(A('swim')&&!B('swim'))return null;
   const b=[];if(B('camo')&&!A('sharp'))b.push('camo');if(B('swim')&&!A('swim'))b.push('swim');
-  if(B('burrow')&&isFed(prey))b.push('burrow');if(B('flight')&&AT.length>=prey.traits.length)b.push('flight');
+  if(B('burrow')&&isFed(prey))b.push('burrow');if(B('flight')&&!A('flight'))b.push('flight');
   if(op&&isProtected(op,prey))b.push('symb');return b;}
 function staticAttack(at,prey){const b=blockers(at,prey,null);const AT=Array.isArray(at)?at:at.traits;return !!b&&(b.length===0||(b.length===1&&AT.includes('intel')));}
 function preyOk(a,x,op){if(x.shellFrom&&x.shellFrom.includes(a.id))return false;const b=blockers(a,x,op);return !!b&&(b.length===0||(b.length===1&&has(a,'intel')));}
@@ -600,7 +600,8 @@ function aiDev(pi){
       else if(t==='scav')v=(opCarn||carnN)?1.2:0.8;
       else if(t==='hib')v=1.0;else if(t==='piracy')v=0.9;else if(t==='graze')v=0.7;
       else if(t==='intel')v=hasT('carn')?1.5:0.1;else if(t==='ambush')v=hasT('carn')?1.2:0.1;
-      else if(['flight','shell','ink'].includes(t))v=opCarn?1.4:0.6;
+      else if(t==='flight')v=hasT('carn')?(opA.some(o=>has(o.a,'flight'))?1.5:0.3):(opCarns.some(o=>!has(o.a,'flight'))?1.4:0.5);
+      else if(['shell','ink'].includes(t))v=opCarn?1.4:0.6;
       else if(t==='specA'||t==='specB')v=hasT('carn')?0.1:S.players.some(p=>p.animals.some(x=>x!==a&&allT(x).includes(t)))?0.3:1.2;
       else if(t==='viv')v=1.0;else if(t==='meta')v=0.8;
       const f=TR[t].f||0;if(f&&total+f>budget)v-=1.5;
