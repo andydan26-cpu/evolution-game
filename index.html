@@ -293,7 +293,7 @@ section:has(> #hand) .who,section:has(> #hand) .sideInfo,section:has(> #hand) .e
     <p>依桌遊《演化論：物種起源》規則改編，2–6 人，每個座位可以是玩家或電腦。可以同一支手機輪流玩，也可以開房間連線對戰。收錄基本版 19 種性狀，以及可選加入的《振翅高飛》擴充 11 種性狀。</p>
     <h3>每一輪</h3>
     <ol>
-      <li><b>發展</b>：每人先蓋一張牌到「食物區」（牌左上角的數字是食物數）。之後輪流打牌：當新動物、當性狀，或丟一張牌讓動物「體型＋1」或「群體＋1」。牌都是蓋著打，所有人結束發展後同時開牌。</li>
+      <li><b>發展</b>：每人先蓋一張牌到「食物區」（牌左上角的數字是食物數）。之後輪流打牌：當新動物、當性狀，或丟一張牌讓動物「體型＋1」或「群體＋1」。牌都是蓋著打，所有人結束發展後同時開牌。輪到你時點自己的動物，可以拿掉不要的性狀（寄生、吸蟲除外），不算一次行動。</li>
       <li><b>進食</b>：食物區的牌翻開，食物數加總放進食物池（上一輪沒吃完的會留著），再由每人各擲一顆骰子，點數最大的先吃（平手的重擲），之後依座位順序輪流。先點你的一隻動物，再點牠要吃的東西。冬眠、踩踏、用脂肪是免費動作。食物池吃完後肉食還能繼續攻擊，等所有動物都沒東西可吃才結束。</li>
       <li><b>滅絕</b>：脂肪先自動轉成食物。沒吃飽的動物，少吃幾個群體就減少幾；群體減到 0 或中毒的動物死亡。每人抽「存活動物數＋1」張牌；沒有動物也沒手牌就抽 6 張。</li>
     </ol>
@@ -771,8 +771,20 @@ function animalInfo(pi,a){
     +prs.map(x=>`<dt>${TR[x.t].n}</dt><dd>${x.t==='symb'?(x.a===a.id?`牠是宿主，保護 #${partner(x,a)}。`:`由 #${partner(x,a)} 保護，宿主吃飽前牠不能吃。`):`和 #${partner(x,a)} 連結。`}${TR[x.t].d}</dd>`).join('')+'</dl>';
   else h+='<p>沒有公開的性狀，目前只需要 1 個食物。</p>';
   if(a.pend&&a.pend.length)h+='<p>還有蓋著的牌，發展結束後同時開牌。</p>';
+  const V=viewerIdx();
+  if(pi===V&&S.phase==='dev'&&live()&&S.turn===V&&!S.players[V].ai&&!handoff&&seated()){
+    const btn=(lab,attrs)=>`<button class="btn sm alt" ${attrs}>${lab}</button>`;
+    const bs=[...new Set(a.traits)].filter(t=>t!=='parasite'&&t!=='trem').map(t=>btn(`拿掉${TR[t].n}`,`data-act="rmTrait" data-a="${a.id}" data-t="${t}"`))
+      .concat((a.pend||[]).map((x,k)=>x.by===V?btn(`收回${TR[x.t].n}（未開）`,`data-act="rmPend" data-a="${a.id}" data-k="${k}"`):'').filter(Boolean))
+      .concat(p.pairs.map((x,k)=>x.a===a.id||x.b===a.id?btn(`拿掉${TR[x.t].n}↔#${partner(x,a)}`,`data-act="rmPair" data-k="${k}"`):'').filter(Boolean));
+    h+=bs.length?`<div class="ih" style="font-size:14px;margin-top:4px">拿掉性狀（不算一次行動，拿掉的牌丟進棄牌堆）</div><div class="row">${bs.join('')}</div>`:'';
+  }
   return h;
 }
+function rmTrait(pi,aid,t){const p=S.players[pi],a=byId(p,aid);if(!a||t==='parasite'||t==='trem')return;const k=a.traits.indexOf(t);if(k<0)return;
+  a.traits.splice(k,1);a.fat=Math.min(a.fat,fatCap(a));p.discard++;log(`${pname(pi)}拿掉了 #${a.id} 的「${TR[t].n}」`,pi);}
+function rmPend(pi,aid,k){const p=S.players[pi],a=byId(p,aid);if(!a||!a.pend[k]||a.pend[k].by!==pi)return;a.pend.splice(k,1);p.discard++;log(`${pname(pi)}丟掉了一張蓋牌`,pi);}
+function rmPair(pi,k){const p=S.players[pi],x=p.pairs[k];if(!x)return;p.pairs.splice(k,1);p.discard++;log(`${pname(pi)}拿掉了 #${x.a} 和 #${x.b} 的「${TR[x.t].n}」`,pi);}
 function seatsEditor(online){
   return `<div class="tagLine">卡牌</div><div class="seg"><button class="btn sm ${setup.exp?'':'alt'}" data-act="setExp" data-v="1">基本版＋振翅高飛</button><button class="btn sm ${setup.exp?'alt':''}" data-act="setExp" data-v="0">只用基本版</button></div>
   <div class="tagLine">人數</div><div class="seg">${[2,3,4,5,6].map(n=>`<button class="btn sm ${setup.n===n?'':'alt'}" data-act="setN" data-n="${n}">${n} 人</button>`).join('')}</div>
@@ -886,7 +898,7 @@ function render(){
   if(card){const t=TR[card.t];info=`<img class="infoArt" src="${art(card.t)}" alt=""><div class="ih">${t.n}<span class="kind">${KIND[t.k]}</span></div><p>${t.d}</p><p>也可以不用性狀，直接當一隻新動物。打出去的牌會蓋著，發展結束後所有人同時開牌。</p>`;}
   else if(att)info=animalInfo(V,att);
   else if(inspA)info=animalInfo(insp.p,inspA);
-  else if(S.phase==='dev')info='<div class="ih">發展階段說明</div><p>輪流打牌，牌都是蓋著打：其他人只看得到你蓋了幾張，等所有人都結束發展才同時開牌。每張牌可以當一隻新動物，或當性狀放上去。動物越多、性狀越強，需要的食物越多，沒吃飽就會滅絕。</p>';
+  else if(S.phase==='dev')info='<div class="ih">發展階段說明</div><p>點自己的動物可以拿掉不要的性狀（不算行動）。輪流打牌，牌都是蓋著打：其他人只看得到你蓋了幾張，等所有人都結束發展才同時開牌。每張牌可以當一隻新動物，或當性狀放上去。動物越多、性狀越強，需要的食物越多，沒吃飽就會滅絕。</p>';
   else if(S.phase==='feed')info='<div class="ih">進食階段說明</div><p>開牌後每人擲一顆骰子，點數最大的先吃，再依座位順序輪流。先點你的一隻動物，再點牠要吃的東西：食物池（肉食不能吃）、要攻擊或掠奪的其他玩家動物。冬眠、踩踏、用脂肪是免費動作。食物池吃完後肉食還能繼續攻擊，等所有動物都沒東西可吃才結束。</p>';
   else info='<p>遊戲結束。</p>';
   $('#info').innerHTML=info;
@@ -965,6 +977,9 @@ document.addEventListener('click',e=>{
   if(!my){if(act==='mine'||act==='opp')inspect();return;}
   if(act==='cancel'){sel=null;render();return;}
   if(act==='pass'){if(S.phase==='dev'&&!me.holed&&me.hand.length)return;passAction(V);commit();return;}
+  if(S.phase==='dev'&&(act==='rmTrait'||act==='rmPend'||act==='rmPair')){
+    if(act==='rmTrait')rmTrait(V,+el.dataset.a,el.dataset.t);else if(act==='rmPend')rmPend(V,+el.dataset.a,+el.dataset.k);else rmPair(V,+el.dataset.k);
+    commit();return;}
   if(S.phase==='dev'){
     if(act==='card'){sel=sel&&sel.card===i?null:{card:i,first:null};render();if(sel&&typeof auCall==='function')auCall(me.hand[i].t);return;}
     const card=sel&&sel.card!=null?me.hand[sel.card]:null;
