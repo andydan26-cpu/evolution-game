@@ -168,6 +168,12 @@ h1{font-family:var(--f-display);font-size:30px;font-weight:700;margin:0;letter-s
 .lseat .nm.wait{color:var(--muted);font-weight:400}
 .pill{font-size:11px;border:1px solid currentColor;border-radius:999px;padding:0 7px;color:var(--accent)}
 .netMsg{color:var(--hot);font-size:14px;margin:0}
+.voiceBar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:color-mix(in srgb,var(--raise) 80%,transparent);border:1px solid var(--line);border-radius:999px;padding:6px 8px 6px 14px}
+.voiceBar .vl{flex:1;min-width:0;font-size:13px;color:var(--muted)}
+.voiceBar .vl b{color:var(--ink);font-weight:500}
+.voiceBar .live{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--hot);margin-right:6px;animation:vpulse 1.4s ease-in-out infinite}
+@keyframes vpulse{50%{opacity:.35}}
+@media (prefers-reduced-motion: reduce){.voiceBar .live{animation:none}}
 .card .artWrap .fv{position:absolute;top:6px;left:6px;min-width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-family:var(--f-num);font-weight:500;font-size:14px;color:#fff;background:radial-gradient(circle at 35% 30%,#FFB3A6 0 15%,var(--food) 60%);box-shadow:0 1px 2px rgba(0,0,0,.35)}
 .me .animal.cann{border-color:var(--hot);box-shadow:0 0 0 3px color-mix(in srgb,var(--hot) 28%,transparent)}
 .chip{align-items:center}
@@ -256,6 +262,7 @@ section:has(> #hand) .who,section:has(> #hand) .sideInfo,section:has(> #hand) .e
     <button class="ghost" data-act="rules">規則與性狀</button>
     <button class="ghost" data-act="reset" id="resetBtn" hidden>重新設定</button>
   </header>
+  <div class="voiceBar" id="voiceBar" hidden></div>
 
   <section class="side setup" id="home" hidden></section>
   <section class="side setup" id="lobby" hidden></section>
@@ -306,7 +313,7 @@ section:has(> #hand) .who,section:has(> #hand) .sideInfo,section:has(> #hand) .e
     <h3>結束與計分</h3>
     <p>牌庫抽完後再玩最後一輪（5–6 人用 1.5 倍牌庫）。存活動物每隻 2 分、每個性狀 1 分（成對性狀算 1 張）、每加過一次體型或群體 1 分；肉食、大型各再加 1 分，寄生再加 2 分。同分比棄牌多者勝。</p>
     <h3>連線對戰</h3>
-    <p>房主建立房間後把房號給朋友，朋友打開同一個頁面輸入房號入座。電腦玩家由房主的裝置代打，房主要保持頁面開著。</p>
+    <p>房主建立房間後把房號給朋友，朋友打開同一個頁面輸入房號入座。房間上方有「加入語音」，允許麥克風後就能和同房的人講話，可隨時靜音。電腦玩家由房主的裝置代打，房主要保持頁面開著。</p>
     <button class="btn" data-act="closeSheet">回到牌桌</button>
   </div>
 </div>
@@ -676,7 +683,7 @@ function pushState(){
 function hostOpen(room){
   closeNet();mode='online';net.host=true;net.code=room.code;net.room=room;net.ver=room.ver||0;net.conns={};
   S=room.status==='play'&&room.S?clone(room.S):null;saveLast(room.code);hostSave();
-  const p=new Peer(PID(room.code),PEEROPT);net.peer=p;
+  const p=new Peer(PID(room.code),PEEROPT);net.peer=p;p.on('call',onCall);
   p.on('open',()=>{if(net.peer!==p)return;netMsg='';render();});
   p.on('connection',c=>{c.on('data',d=>hostMsg(c,d));c.on('close',()=>hostDrop(c));});
   p.on('error',e=>{if(net.peer!==p)return;
@@ -687,13 +694,14 @@ function hostOpen(room){
 }
 const hostSave=()=>{try{localStorage.setItem('sszc-hostroom',JSON.stringify(net.room));}catch(e){}};
 function broadcast(){hostSave();const msg={t:'room',room:net.room};Object.values(net.conns).forEach(c=>{try{if(c.open)c.send(msg);}catch(e){}});}
-function roomChanged(){broadcast();render();}
+function roomChanged(){broadcast();render();voiceSync();}
 function hostMsg(c,d){
   if(!d||typeof d!=='object')return;const R=net.room;
   if(d.t==='hello'){c.uid=String(d.uid||'').slice(0,40);net.conns[c.peer]=c;c.send({t:'room',room:R});return;}
   if(!c.uid)return;
   if(d.t==='claim'&&R.status==='lobby'){const i=d.seat|0,s=R.seats[i];
     if(s&&!s.uid&&!s.ai){R.seats=R.seats.map((x,k)=>k===i?{name:String(d.name||'玩家').slice(0,8),ai:false,uid:c.uid}:(x.uid===c.uid?{name:'',ai:false,uid:null}:x));roomChanged();}else c.send({t:'room',room:R});return;}
+  if(d.t==='voice'){R.voice=(R.voice||[]).filter(v=>v.uid!==c.uid);if(d.on)R.voice.push({uid:c.uid,peer:String(c.peer),name:String(d.name||'').slice(0,8),muted:!!d.muted});roomChanged();return;}
   if(d.t==='leave'&&R.status==='lobby'){R.seats=R.seats.map(x=>x.uid===c.uid?{name:'',ai:false,uid:null}:x);roomChanged();return;}
   if(d.t==='state'&&R.status==='play'){
     const ok=S&&d.S&&d.ver===R.ver+1&&live()&&S.players[S.turn]&&S.players[S.turn].uid===c.uid;
@@ -701,6 +709,7 @@ function hostMsg(c,d){
     else c.send({t:'room',room:R});}
 }
 function hostDrop(c){delete net.conns[c.peer];const R=net.room;
+  if(R&&R.voice&&R.voice.some(v=>v.peer===c.peer)){R.voice=R.voice.filter(v=>v.peer!==c.peer);roomChanged();}
   if(R&&R.status==='lobby'&&c.uid&&!Object.values(net.conns).some(x=>x.uid===c.uid)){R.seats=R.seats.map(x=>x.uid===c.uid?{name:'',ai:false,uid:null}:x);roomChanged();}}
 const CODECH='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 function createRoom(){
@@ -719,7 +728,7 @@ function openRoom(code){
   if(!net.db)return;code=String(code).toUpperCase().trim();
   if(net.code!==code)net.retry=0;
   closeNet();mode='online';net.host=false;net.code=code;net.room=null;net.ver=0;S=null;netMsg='';sel=null;insp=null;handoff=false;saveLast(code);
-  const p=new Peer(PEEROPT);net.peer=p;
+  const p=new Peer(PEEROPT);net.peer=p;p.on('call',onCall);
   p.on('open',()=>{if(net.peer!==p)return;const c=p.connect(PID(code),{reliable:true});net.conn=c;
     const to=setTimeout(()=>{if(net.conn===c&&!net.room){netMsg='找不到這個房間：請確認房號，或請房主保持頁面開著';render();}},9000);
     c.on('open',()=>{c.send({t:'hello',uid:net.uid,name:setup.myName});});
@@ -736,10 +745,70 @@ function onRoomData(room){
   if(room.status==='play'&&room.S){if(!S||room.ver!==net.ver){S=room.S;net.ver=room.ver;sel=null;if(S.phase!=='over')overClosed=false;}}
   else{S=null;net.ver=room.ver||0;}
   render();
+  if(VC.on){const mine=(room.voice||[]).find(v=>v.uid===net.uid);if(!mine||mine.peer!==myPeerId())voiceAnnounce(true);}
+  voiceSync();
+}
+/* 語音聊天：連線對戰時每個人互相直連通話 */
+const VC={on:false,muted:false,stream:null,calls:{},audios:{}};
+const myPeerId=()=>net.peer&&net.peer.id;
+const myVoiceName=()=>{const r=net.room;const s=r&&r.seats?r.seats.find(x=>x.uid===net.uid):null;return (s&&s.name)||(setup.myName||'').trim()||'玩家';};
+async function voiceJoin(){
+  if(VC.on||!net.peer)return;
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){netMsg='這個瀏覽器不支援語音，請用 Chrome 或 Safari 最新版';render();return;}
+  try{VC.stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});}
+  catch(e){netMsg='沒有拿到麥克風權限：請在瀏覽器網址列旁允許麥克風，再按一次「加入語音」';render();return;}
+  VC.on=true;VC.muted=false;netMsg='';
+  if(typeof AU!=='undefined'&&AU.ctx&&AU.mus)AU.mus.gain.setTargetAtTime(AU.on.music?0.18:0,AU.ctx.currentTime,0.3);
+  voiceAnnounce(true);render();voiceSync();
+}
+function voiceLeave(){
+  VC.on=false;Object.values(VC.calls).forEach(c=>{try{c.close();}catch(e){}});VC.calls={};
+  Object.keys(VC.audios).forEach(dropAudio);
+  if(VC.stream){VC.stream.getTracks().forEach(t=>t.stop());VC.stream=null;}
+  if(typeof AU!=='undefined'&&AU.ctx&&AU.mus)AU.mus.gain.setTargetAtTime(AU.on.music?0.6:0,AU.ctx.currentTime,0.3);
+  voiceAnnounce(false);render();
+}
+function voiceMute(){VC.muted=!VC.muted;if(VC.stream)VC.stream.getAudioTracks().forEach(t=>t.enabled=!VC.muted);voiceAnnounce(true);render();}
+function voiceAnnounce(on){
+  if(net.host){const R=net.room;if(!R)return;R.voice=(R.voice||[]).filter(v=>v.uid!==net.uid);
+    if(on)R.voice.push({uid:net.uid,peer:myPeerId(),name:myVoiceName(),muted:VC.muted});broadcast();render();voiceSync();}
+  else if(net.conn&&net.conn.open)net.conn.send({t:'voice',on,name:myVoiceName(),muted:VC.muted});
+}
+function voiceSync(){
+  if(!VC.on||!net.room||!net.peer||!VC.stream)return;const me=myPeerId();if(!me)return;
+  const roster=(net.room.voice||[]).filter(v=>v.peer&&v.peer!==me);const want=new Set(roster.map(v=>v.peer));
+  Object.keys(VC.calls).forEach(id=>{if(!want.has(id)){try{VC.calls[id].close();}catch(e){}delete VC.calls[id];dropAudio(id);}});
+  roster.forEach(v=>{if(!VC.calls[v.peer]&&me<v.peer){try{const call=net.peer.call(v.peer,VC.stream);if(call)attachCall(call);}catch(e){}}});
+}
+function onCall(call){
+  if(!VC.on||!VC.stream){try{call.close();}catch(e){}return;}
+  if(VC.calls[call.peer]&&VC.calls[call.peer]!==call){try{VC.calls[call.peer].close();}catch(e){}}
+  call.answer(VC.stream);attachCall(call);
+}
+function attachCall(call){
+  VC.calls[call.peer]=call;
+  call.on('stream',st=>playStream(call.peer,st));
+  call.on('close',()=>{if(VC.calls[call.peer]===call){delete VC.calls[call.peer];dropAudio(call.peer);render();}});
+  call.on('error',()=>{});render();
+}
+function playStream(id,st){
+  let a=VC.audios[id];if(!a){a=document.createElement('audio');a.autoplay=true;a.setAttribute('playsinline','');a.hidden=true;document.body.appendChild(a);VC.audios[id]=a;}
+  a.srcObject=st;const p=a.play();if(p&&p.catch)p.catch(()=>{VC.needTap=true;render();});
+}
+function dropAudio(id){const a=VC.audios[id];if(a){a.srcObject=null;a.remove();delete VC.audios[id];}}
+function renderVoice(){
+  const bar=$('#voiceBar');if(!bar)return;
+  const show=mode==='online'&&!!net.room;bar.hidden=!show;if(!show)return;
+  const roster=net.room.voice||[];
+  const names=roster.map(v=>`<b>${esc(v.name||'玩家')}</b>${v.muted?'（靜音）':''}`).join('、');
+  const linked=Object.keys(VC.audios).length;
+  bar.innerHTML=`<span class="vl">${VC.on?'<span class="live"></span>':''}${roster.length?`語音中：${names}`:'語音聊天：還沒有人加入'}${VC.on&&roster.length>1?`・已接通 ${linked} 人`:''}${VC.needTap?'・點一下畫面就能聽到':''}</span>
+    ${VC.on?`<button class="btn sm ${VC.muted?'':'alt'}" data-act="vmute">${VC.muted?'取消靜音':'靜音'}</button><button class="btn sm alt" data-act="vleave">離開語音</button>`
+      :'<button class="btn sm" data-act="vjoin">加入語音</button>'}`;
 }
 function claimSeat(i){if(net.conn&&net.conn.open)net.conn.send({t:'claim',seat:i,name:(setup.myName||'').trim()||'玩家'});}
 function leaveRoom(silent){
-  clearTimeout(aiTimer);
+  clearTimeout(aiTimer);if(VC.on)voiceLeave();
   if(!silent&&!net.host&&net.conn&&net.conn.open&&net.room&&net.room.status==='lobby'){try{net.conn.send({t:'leave'});}catch(e){}}
   if(net.host){try{localStorage.removeItem('sszc-hostroom');}catch(e){}}
   const pc=net.peer;setTimeout(()=>{try{pc&&pc.destroy();}catch(e){}},300);net.peer=null;try{net.conn&&setTimeout(()=>{},0);}catch(e){}
@@ -831,6 +900,7 @@ function renderLobby(){
   <div class="row">${host?`<button class="btn" data-act="hostStart">開始遊戲</button>${empty?`<span class="tagLine">還有 ${empty} 個空位，開始後由電腦代打</span>`:''}`:'<span class="tagLine">等房主開始遊戲</span>'}<button class="btn alt" data-act="leave">離開房間</button></div>`;
 }
 function render(){
+  renderVoice();
   const screen=S?'game':(mode==='online'&&net.code?'lobby':'home');
   $('#home').hidden=screen!=='home';$('#lobby').hidden=screen!=='lobby';$('#game').hidden=screen!=='game';
   $('#resetBtn').hidden=screen==='home';$('#resetBtn').textContent=Date.now()-resetArm<3000?'再按一次確認':(mode==='online'?'離開房間':'重新設定');
@@ -942,6 +1012,7 @@ function render(){
 }
 
 /* ---------- 操作 ---------- */
+document.addEventListener('click',()=>{if(VC.needTap){VC.needTap=false;Object.values(VC.audios).forEach(a=>{const p=a.play();if(p&&p.catch)p.catch(()=>{});});renderVoice();}},true);
 document.addEventListener('input',e=>{const t=e.target;
   if(t.dataset&&t.dataset.seat!=null){setup.seats[+t.dataset.seat].name=t.value;saveSetup();}
   if(t.id==='myName'){setup.myName=t.value;saveSetup();}});
@@ -949,6 +1020,9 @@ document.addEventListener('click',e=>{
   const el=e.target.closest('[data-act]');
   if(!el){if(e.target.id==='rulesSheet')$('#rulesSheet').hidden=true;return;}
   const act=el.dataset.act,i=+el.dataset.i;
+  if(act==='vjoin'){voiceJoin();return;}
+  if(act==='vmute'){voiceMute();return;}
+  if(act==='vleave'){voiceLeave();return;}
   if(act==='rules'){$('#rulesSheet').hidden=false;return;}
   if(act==='closeSheet'){$('#rulesSheet').hidden=true;return;}
   if(act==='tab'){tab=el.dataset.t;netMsg='';render();return;}
