@@ -256,6 +256,7 @@ function handle(pid,m){
  if(m.t==='start'&&pid===G.hostPid){startGame();return broadcast()}
  if(m.t==='lobby'&&pid===G.hostPid){G.phase='lobby';G.players=G.players.filter(x=>x.connected);G.players.forEach(x=>{delete x.conds});return broadcast()}
  if(m.t==='act')return doAction(p,m.a);
+ if(m.t==='pass'&&G.phase==='action'&&G.players[G.turn]===p){addLog(`${p.name} 選擇 Pass，這回合不改動`,`${p.name} Pass`);G.last=null;advance();return broadcast()}
  if(m.t==='react'&&G.phase==='react'&&G.pending.includes(pid)){
   G.reacts[pid]=m.v;G.pending=G.pending.filter(x=>x!==pid);
   addLog(`${p.name}：${REACT[m.v]}`,`${p.name}，${REACT[m.v].slice(2)}`);
@@ -404,7 +405,7 @@ function gameHTML(){
  const v=view,cur=v.players[v.turn],myTurn=v.phase==='action'&&cur.pid===v.me,host=v.me===v.host;
  const nextReveal=v.revealRounds.find(r=>r>v.round);
  let panel='';
- if(v.phase==='action')panel=myTurn?`<b>輪到你了！</b><div class="sub">點牆壁的 🖌 或任一格子：加入、移除、替換物品或改牆色（四選一）。</div>`:`<div>等待 <b>${esc(cur.name)}</b> 行動…</div>`;
+ if(v.phase==='action')panel=myTurn?`<b>輪到你了！</b><div class="sub">點牆壁的 🖌 或任一格子：加入、移除、替換物品或改牆色（四選一）；不想動就按 Pass。</div><button class="mt" style="width:100%;font-weight:600" onclick="send({t:'pass'})">⏭️ Pass（這回合不改動）</button>`:`<div>等待 <b>${esc(cur.name)}</b> 行動…</div>`;
  else if(v.phase==='react'){
   if(v.pending.includes(v.me))panel=`<b>你覺得剛剛的改動如何？</b><div class="sub">只能表達感受，不能說出條件</div><div class="reacts mt">${Object.entries(REACT).map(([k,l])=>`<button onclick="send({t:'react',v:'${k}'})">${l}</button>`).join('')}</div><button class="mt ${listening?'listen':''}" style="width:100%" onclick="voiceReact()">🎤 ${listening?'聆聽中…':'用說的評價（喜歡／還好／不喜歡）'}</button>`;
   else panel=`<div>等待其他人評價：${v.pending.map(pid=>esc(v.players.find(p=>p.pid===pid)?.name||'')).join('、')}</div>${(cur.pid===v.me||host)?`<button class="mt" onclick="send({t:'skip'})">不等了，下一位</button>`:''}`;
@@ -434,7 +435,7 @@ function allCondsHTML(){return`<div class="card"><b>大家的祕密條件</b>${v
 function rulesHTML(){return`<div class="card"><details><summary>📖 遊戲規則</summary><div class="sub mt">
 <p><b>目標：</b>大家剛搬進新家，每人手上有幾個祕密的裝潢條件。所有人的條件「同時」達成，就一起獲勝（合作遊戲）。</p>
 <p><b>房子：</b>4 個房間（樓上臥室、浴室；樓下客廳、廚房）。每間有一面牆和 3 個位置：燈具、掛畫、擺飾。物品有 4 種顏色，每件物品也有固定風格（◆現代 ●復古 ♛古典 ✦奇趣）。</p>
-<p><b>輪到你時，四選一：</b>①在空位加入物品 ②移除一件物品 ③把物品換成同類型的其他款 ④重新粉刷一面牆。</p>
+<p><b>輪到你時，四選一：</b>①在空位加入物品 ②移除一件物品 ③把物品換成同類型的其他款 ④重新粉刷一面牆。也可以按 <b>Pass</b> 這回合不改動，直接換下一位。</p>
 <p><b>評價：</b>每次改動後，其他玩家只能回應「喜歡／還好／不喜歡」，嚴禁暗示條件內容。可以按按鈕，也可以用說的。</p>
 <p><b>交流時刻：</b>到了特定回合，每人可以公開自己一個條件。</p>
 <p><b>結束：</b>所有人條件都達成（名字旁出現😊）立即獲勝；回合用完則失敗。分數＝達成條件數×3＋剩餘回合×2。</p>
